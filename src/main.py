@@ -45,7 +45,7 @@ def main():
         stationary_threshold=10.0
     )
 
-    camera = Camera()
+    camera = Camera("1,069 Chicken Farm House Videos, Clips and Stock Footage - Getty Images.mp4")
 
     print("System started.")
     print("Press Q to quit.")
