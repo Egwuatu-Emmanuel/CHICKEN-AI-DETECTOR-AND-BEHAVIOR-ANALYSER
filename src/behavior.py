@@ -1,5 +1,7 @@
+
 import math
 import time
+from itertools import combinations
 
 
 class ChickenState:
@@ -26,12 +28,9 @@ class ChickenState:
             self.previous_position = position
             return
 
-        previous_x, previous_y = self.previous_position
-        current_x, current_y = position
-
-        distance = math.sqrt(
-            (current_x - previous_x) ** 2 +
-            (current_y - previous_y) ** 2
+        distance = math.dist(
+            self.previous_position,
+            position
         )
 
         self.total_distance += distance
@@ -41,11 +40,9 @@ class ChickenState:
         self.previous_position = position
 
     def is_stationary(self, threshold=20.0):
-
         return self.current_speed < threshold
 
     def stationary_duration(self):
-
         if self.stationary_since is None:
             return 0.0
 
@@ -60,26 +57,69 @@ class BehaviorAnalyzer:
     def update_chicken(self, chicken_id, position):
 
         if chicken_id not in self.chickens:
-
             self.chickens[chicken_id] = ChickenState(
                 chicken_id
             )
 
         chicken = self.chickens[chicken_id]
 
-        was_stationary = chicken.is_stationary()
-
         chicken.update(position)
 
-        is_stationary = chicken.is_stationary()
-
-        if is_stationary:
+        if chicken.is_stationary():
 
             if chicken.stationary_since is None:
                 chicken.stationary_since = time.time()
 
         else:
-
             chicken.stationary_since = None
 
         return chicken
+
+
+class CrowdingAnalyzer:
+
+    def __init__(self, crowding_threshold=50.0):
+        self.crowding_threshold = crowding_threshold
+
+    @staticmethod
+    def get_center(bbox):
+        x1, y1, x2, y2 = bbox
+
+        center_x = (x1 + x2) / 2
+        center_y = (y1 + y2) / 2
+
+        return center_x, center_y
+
+    def analyze(self, bounding_boxes):
+
+        chicken_centers = {
+            chicken_id: self.get_center(bbox)
+            for chicken_id, bbox in bounding_boxes.items()
+        }
+
+        crowded_pairs = []
+        crowded_chickens = set()
+
+        for (id_a, center_a), (id_b, center_b) in combinations(
+            chicken_centers.items(), 2
+        ):
+
+            distance = math.dist(center_a, center_b)
+
+            if distance < self.crowding_threshold:
+
+                crowded_pairs.append({
+                    "chicken_a": id_a,
+                    "chicken_b": id_b,
+                    "distance": distance
+                })
+
+                crowded_chickens.add(id_a)
+                crowded_chickens.add(id_b)
+
+        return {
+            "is_crowded": len(crowded_pairs) > 0,
+            "crowded_pairs": crowded_pairs,
+            "crowded_chickens": list(crowded_chickens),
+            "chicken_count": len(chicken_centers)
+        }

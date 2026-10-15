@@ -1,3 +1,4 @@
+
 import cv2
 
 from .config import (
@@ -7,14 +8,13 @@ from .config import (
 
 from .detector import ChickenDetector
 from .tracker import ChickenTracker
-from .behavior import BehaviorAnalyzer
+from .behavior import BehaviorAnalyzer, CrowdingAnalyzer
 from .camera import Camera
 from .storage import Database
 from .alerts import AlertManager
 
 
 def get_center(box):
-
     x1, y1, x2, y2 = box
 
     center_x = int((x1 + x2) / 2)
@@ -33,11 +33,13 @@ def main():
 
     detector = ChickenDetector()
 
-    tracker = ChickenTracker(
-        detector
-    )
+    tracker = ChickenTracker(detector)
 
     behavior_analyzer = BehaviorAnalyzer()
+
+    crowding_analyzer = CrowdingAnalyzer(
+        crowding_threshold=50.0
+    )
 
     database = Database()
 
@@ -45,7 +47,9 @@ def main():
         stationary_threshold=10.0
     )
 
-    camera = Camera("1,069 Chicken Farm House Videos, Clips and Stock Footage - Getty Images.mp4")
+    camera = Camera(
+        "1,069 Chicken Farm House Videos, Clips and Stock Footage - Getty Images.mp4"
+    )
 
     print("System started.")
     print("Press Q to quit.")
@@ -72,8 +76,10 @@ def main():
             result = results[0]
 
             # -------------------------------------------------
-            # CHECK WHETHER TRACKING DATA EXISTS
+            # PREPARE CURRENT FRAME'S BOUNDING BOXES
             # -------------------------------------------------
+
+            bounding_boxes = {}
 
             if result.boxes is not None:
 
@@ -105,13 +111,18 @@ def main():
 
                         class_id = int(class_id)
 
-                        x1, y1, x2, y2 = map(
-                            int,
-                            box
-                        )
+                        x1, y1, x2, y2 = map(int, box)
 
                         center = get_center(
                             (x1, y1, x2, y2)
+                        )
+
+                        # ---------------------------------------------
+                        # COLLECT BOUNDING BOXES FOR CROWDING ANALYSIS
+                        # ---------------------------------------------
+
+                        bounding_boxes[chicken_id] = (
+                            x1, y1, x2, y2
                         )
 
                         # ---------------------------------------------
@@ -138,20 +149,15 @@ def main():
                         )
 
                         # ---------------------------------------------
-                        # CHECK ALERTS
+                        # CHECK INACTIVITY ALERTS
                         # ---------------------------------------------
 
-                        alert = (
-                            alert_manager.check_chicken(
-                                chicken
-                            )
+                        alert = alert_manager.check_chicken(
+                            chicken
                         )
 
                         if alert:
-
-                            print(
-                                f"[ALERT] {alert}"
-                            )
+                            print(f"[BEHAVIOR ALERT] {alert}")
 
                         # ---------------------------------------------
                         # DRAW BOUNDING BOX
@@ -214,6 +220,57 @@ def main():
                             (255, 255, 255),
                             1
                         )
+
+            # -------------------------------------------------
+            # CROWDING ANALYSIS
+            # RUN AFTER PROCESSING ALL CHICKENS IN THE FRAME
+            # -------------------------------------------------
+
+            crowding_result = crowding_analyzer.analyze(
+                bounding_boxes
+            )
+
+            # ---------------------------------------------
+            # CHECK CROWDING ALERTS
+            # ---------------------------------------------
+
+            crowding_alerts = alert_manager.check_crowding(
+                crowding_result
+            )
+
+            if crowding_alerts:
+
+                for alert in crowding_alerts:
+                    print(f"[CROWDING ALERT] {alert}")
+
+            # -------------------------------------------------
+            # DISPLAY CROWDING STATUS ON FRAME
+            # -------------------------------------------------
+
+            if crowding_result["is_crowded"]:
+
+                status_text = (
+                    f"CROWDING DETECTED: "
+                    f"{len(crowding_result['crowded_chickens'])} chickens"
+                )
+
+                status_color = (0, 0, 255)
+
+            else:
+
+                status_text = "Crowding: Normal"
+
+                status_color = (0, 255, 0)
+
+            cv2.putText(
+                frame,
+                status_text,
+                (20, 35),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                status_color,
+                2
+            )
 
             # -------------------------------------------------
             # DISPLAY CAMERA
